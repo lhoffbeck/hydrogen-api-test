@@ -1,19 +1,19 @@
-import {Suspense} from 'react';
-import {defer, redirect} from '@shopify/remix-oxygen';
-import {Await, Link, useLoaderData} from '@remix-run/react';
+import {defer} from '@shopify/remix-oxygen';
+import {Link, useLoaderData} from '@remix-run/react';
+
 import {
   Image,
   Money,
-  VariantSelector,
   getSelectedProductOptions,
   CartForm,
 } from '@shopify/hydrogen';
-import {getVariantUrl} from '~/lib/variants';
+
+import {VariantSelector} from '~/components/VariantSelector';
 
 /**
  * @type {MetaFunction<typeof loader>}
  */
-export const meta = ({data, location}) => {
+export const meta = ({data}) => {
   return [{title: `Hydrogen | ${data?.product.title ?? ''}`}];
 };
 
@@ -24,95 +24,34 @@ export async function loader({params, request, context}) {
   const {handle} = params;
   const {storefront} = context;
 
-  const selectedOptions = getSelectedProductOptions(request).filter(
-    (option) =>
-      // Filter out Shopify predictive search query params
-      !option.name.startsWith('_sid') &&
-      !option.name.startsWith('_pos') &&
-      !option.name.startsWith('_psq') &&
-      !option.name.startsWith('_ss') &&
-      !option.name.startsWith('_v') &&
-      // Filter out third party tracking params
-      !option.name.startsWith('fbclid'),
-  );
-
   if (!handle) {
     throw new Error('Expected product handle to be defined');
   }
 
   // await the query for the critical product data
   const {product} = await storefront.query(PRODUCT_QUERY, {
-    variables: {handle, selectedOptions},
+    variables: {handle, selectedOptions: getSelectedProductOptions(request)},
   });
 
   if (!product?.id) {
     throw new Response(null, {status: 404});
   }
 
-  const firstVariant = product.variants.nodes[0];
-  const firstVariantIsDefault = Boolean(
-    firstVariant.selectedOptions.find(
-      (option) => option.name === 'Title' && option.value === 'Default Title',
-    ),
-  );
-
-  if (firstVariantIsDefault) {
-    product.selectedVariant = firstVariant;
-  } else {
-    // if no selected variant was returned from the selected options,
-    // we redirect to the first variant's url with it's selected options applied
-    if (!product.selectedVariant) {
-      throw redirectToFirstVariant({product, request});
-    }
+  if (!product.selectedVariant) {
+    product.selectedVariant = product.firstAvailableVariant;
   }
 
-  // In order to show which variants are available in the UI, we need to query
-  // all of them. But there might be a *lot*, so instead separate the variants
-  // into it's own separate query that is deferred. So there's a brief moment
-  // where variant options might show as available when they're not, but after
-  // this deffered query resolves, the UI will update.
-  const variants = storefront.query(VARIANTS_QUERY, {
-    variables: {handle},
-  });
-
-  return defer({product, variants});
-}
-
-/**
- * @param {{
- *   product: ProductFragment;
- *   request: Request;
- * }}
- */
-function redirectToFirstVariant({product, request}) {
-  const url = new URL(request.url);
-  const firstVariant = product.variants.nodes[0];
-
-  return redirect(
-    getVariantUrl({
-      pathname: url.pathname,
-      handle: product.handle,
-      selectedOptions: firstVariant.selectedOptions,
-      searchParams: new URLSearchParams(url.search),
-    }),
-    {
-      status: 302,
-    },
-  );
+  return defer({product});
 }
 
 export default function Product() {
   /** @type {LoaderReturnData} */
-  const {product, variants} = useLoaderData();
+  const {product} = useLoaderData();
   const {selectedVariant} = product;
   return (
     <div className="product">
       <ProductImage image={selectedVariant?.image} />
-      <ProductMain
-        selectedVariant={selectedVariant}
-        product={product}
-        variants={variants}
-      />
+      <ProductMain selectedVariant={selectedVariant} product={product} />
     </div>
   );
 }
@@ -141,38 +80,16 @@ function ProductImage({image}) {
  * @param {{
  *   product: ProductFragment;
  *   selectedVariant: ProductFragment['selectedVariant'];
- *   variants: Promise<ProductVariantsQuery>;
  * }}
  */
-function ProductMain({selectedVariant, product, variants}) {
+function ProductMain({selectedVariant, product}) {
   const {title, descriptionHtml} = product;
   return (
     <div className="product-main">
       <h1>{title}</h1>
       <ProductPrice selectedVariant={selectedVariant} />
       <br />
-      <Suspense
-        fallback={
-          <ProductForm
-            product={product}
-            selectedVariant={selectedVariant}
-            variants={[]}
-          />
-        }
-      >
-        <Await
-          errorElement="There was a problem loading product variants"
-          resolve={variants}
-        >
-          {(data) => (
-            <ProductForm
-              product={product}
-              selectedVariant={selectedVariant}
-              variants={data.product?.variants.nodes || []}
-            />
-          )}
-        </Await>
-      </Suspense>
+      <ProductForm product={product} selectedVariant={selectedVariant} />
       <br />
       <br />
       <p>
@@ -215,16 +132,16 @@ function ProductPrice({selectedVariant}) {
  * @param {{
  *   product: ProductFragment;
  *   selectedVariant: ProductFragment['selectedVariant'];
- *   variants: Array<ProductVariantFragment>;
  * }}
  */
-function ProductForm({product, selectedVariant, variants}) {
+function ProductForm({product, selectedVariant}) {
   return (
     <div className="product-form">
       <VariantSelector
         handle={product.handle}
         options={product.options}
-        variants={variants}
+        selectedOptions={selectedVariant.selectedOptions}
+        encodedVariantAvailability={product.encodedVariantAvailability}
       >
         {({option}) => <ProductOptions key={option.name} option={option} />}
       </VariantSelector>
@@ -367,11 +284,10 @@ const PRODUCT_FRAGMENT = `#graphql
     selectedVariant: variantBySelectedOptions(selectedOptions: $selectedOptions, ignoreUnknownOptions: true, caseInsensitiveMatch: true) {
       ...ProductVariant
     }
-    variants(first: 1) {
-      nodes {
-        ...ProductVariant
-      }
+    firstAvailableVariant {
+      ...ProductVariant
     }
+    encodedVariantAvailability
     seo {
       description
       title
@@ -392,30 +308,6 @@ const PRODUCT_QUERY = `#graphql
     }
   }
   ${PRODUCT_FRAGMENT}
-`;
-
-const PRODUCT_VARIANTS_FRAGMENT = `#graphql
-  fragment ProductVariants on Product {
-    variants(first: 250) {
-      nodes {
-        ...ProductVariant
-      }
-    }
-  }
-  ${PRODUCT_VARIANT_FRAGMENT}
-`;
-
-const VARIANTS_QUERY = `#graphql
-  ${PRODUCT_VARIANTS_FRAGMENT}
-  query ProductVariants(
-    $country: CountryCode
-    $language: LanguageCode
-    $handle: String!
-  ) @inContext(country: $country, language: $language) {
-    product(handle: $handle) {
-      ...ProductVariants
-    }
-  }
 `;
 
 /** @typedef {import('@shopify/remix-oxygen').LoaderFunctionArgs} LoaderFunctionArgs */
