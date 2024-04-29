@@ -1,4 +1,3 @@
-import {defer} from '@shopify/remix-oxygen';
 import {Link, useLoaderData} from '@remix-run/react';
 
 import {
@@ -41,7 +40,7 @@ export async function loader({params, request, context}) {
     product.selectedVariant = product.firstAvailableVariant;
   }
 
-  return defer({product});
+  return {product};
 }
 
 export default function Product() {
@@ -287,7 +286,9 @@ const PRODUCT_FRAGMENT = `#graphql
     firstAvailableVariant {
       ...ProductVariant
     }
-    encodedVariantAvailability
+    adjacentVariants(selectedOptions: $selectedOptions, ignoreUnknownOptions: true, caseInsensitiveMatch: true) {
+      ...ProductVariant
+    }
     seo {
       description
       title
