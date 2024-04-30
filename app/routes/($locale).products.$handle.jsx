@@ -286,9 +286,7 @@ const PRODUCT_FRAGMENT = `#graphql
     firstAvailableVariant {
       ...ProductVariant
     }
-    adjacentVariants(selectedOptions: $selectedOptions, ignoreUnknownOptions: true, caseInsensitiveMatch: true) {
-      ...ProductVariant
-    }
+    encodedVariantAvailability
     seo {
       description
       title
