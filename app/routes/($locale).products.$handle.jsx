@@ -1,4 +1,3 @@
-import {defer} from '@shopify/remix-oxygen';
 import {Link, useLoaderData} from '@remix-run/react';
 
 import {
@@ -41,7 +40,7 @@ export async function loader({params, request, context}) {
     product.selectedVariant = product.firstAvailableVariant;
   }
 
-  return defer({product});
+  return {product};
 }
 
 export default function Product() {
@@ -141,7 +140,7 @@ function ProductForm({product, selectedVariant}) {
         handle={product.handle}
         options={product.options}
         selectedOptions={selectedVariant.selectedOptions}
-        encodedVariantAvailability={product.encodedVariantAvailability}
+        variants={product.adjacentVariants}
       >
         {({option}) => <ProductOptions key={option.name} option={option} />}
       </VariantSelector>
@@ -235,6 +234,8 @@ function AddToCartButton({analytics, children, disabled, lines, onClick}) {
 const PRODUCT_VARIANT_FRAGMENT = `#graphql
   fragment ProductVariant on ProductVariant {
     availableForSale
+    currentlyNotInStock
+    quantityAvailable
     compareAtPrice {
       amount
       currencyCode
@@ -287,7 +288,16 @@ const PRODUCT_FRAGMENT = `#graphql
     firstAvailableVariant {
       ...ProductVariant
     }
-    encodedVariantAvailability
+    adjacentVariants(selectedOptions: $selectedOptions, ignoreUnknownOptions: true, caseInsensitiveMatch: true) {
+      ...ProductVariant
+    }
+    variants(first: 100) { 
+      edges {
+        node {
+          ...ProductVariant
+        }
+      }
+    }
     seo {
       description
       title
