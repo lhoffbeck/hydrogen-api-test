@@ -91,7 +91,7 @@ export const VariantSelector = React.memo(
 
                   return {
                     value: optionValue,
-                    isAvailable: variant?.availableForSale ?? true,
+                    isAvailable: Boolean(variant?.availableForSale),
                     to: path + searchString,
                     search: searchString,
                     isActive: optionValue === selectedOptionValue,
@@ -186,7 +186,6 @@ export const isOptionValuePresent = (() => {
     if (!decodedOptionValues.has(encodedOptionValues)) {
       // TODO are we worried about the size of this? Should we only store the last 1 encodedOptionValue?
       // decodedOptionValues.clear();
-      console.error(decodeOptionValues(encodedOptionValues));
       decodedOptionValues.set(
         encodedOptionValues,
         new Set(
@@ -196,8 +195,6 @@ export const isOptionValuePresent = (() => {
         ),
       );
     }
-
-    console.error(decodedOptionValues);
 
     const optionValueIndices = getOptionValueIndices(
       targetOptionValues,

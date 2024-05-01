@@ -1,13 +1,11 @@
 import {Link, useLoaderData} from '@remix-run/react';
 
-import {
-  Image,
-  Money,
-  getSelectedProductOptions,
-  CartForm,
-} from '@shopify/hydrogen';
+import {Image, Money, CartForm} from '@shopify/hydrogen';
 
-import {VariantSelector} from '~/components/VariantSelector';
+import {
+  VariantSelector,
+  getSelectedProductOptions,
+} from '~/components/VariantSelector';
 
 /**
  * @type {MetaFunction<typeof loader>}
@@ -234,8 +232,6 @@ function AddToCartButton({analytics, children, disabled, lines, onClick}) {
 const PRODUCT_VARIANT_FRAGMENT = `#graphql
   fragment ProductVariant on ProductVariant {
     availableForSale
-    currentlyNotInStock
-    quantityAvailable
     compareAtPrice {
       amount
       currencyCode
